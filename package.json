@@ -1,0 +1,21 @@
+{
+  "name": "blocks",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently npm:dev:wasm npm:dev:js",
+    "dev:wasm": "cargo watch -w blocks-web -- npm run build:wasm -- --dev",
+    "dev:js": "vite",
+    "build": "npm run build:wasm && npm run build:js",
+    "build:wasm": "wasm-pack build ./blocks-web --target web",
+    "build:js": "vite build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "concurrently": "^9.1.2",
+    "sass-embedded": "^1.83.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  }
+}

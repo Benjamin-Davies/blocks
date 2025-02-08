@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "blocks-web": ["./blocks-web/pkg"]
+    },
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true
+  }
+}

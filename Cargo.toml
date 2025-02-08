@@ -1,0 +1,6 @@
+[workspace]
+resolver = "2"
+members = ["blocks-web"]
+
+[workspace.dependencies]
+wgpu = "24.0.1"
