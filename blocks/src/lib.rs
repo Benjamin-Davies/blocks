@@ -1,5 +1,6 @@
-use std::mem;
+use std::{f32, mem};
 
+use glam::{u8vec3, Mat4, U8Vec3, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{
     error::EventLoopError,
@@ -19,7 +20,7 @@ const CORNFLOWER_BLUE: wgpu::Color = wgpu::Color {
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct Vertex {
-    position: [u8; 3],
+    position: U8Vec3,
     block_type: u8,
 }
 
@@ -37,32 +38,58 @@ impl Vertex {
 
 const VERTICES: &[Vertex] = &[
     Vertex {
-        position: [4, 0, 0],
-        block_type: 0,
-    },
-    Vertex {
-        position: [12, 0, 0],
+        position: u8vec3(16, 8, 8),
         block_type: 1,
     },
     Vertex {
-        position: [16, 8, 0],
-        block_type: 2,
+        position: u8vec3(8, 8, 16),
+        block_type: 5,
     },
     Vertex {
-        position: [12, 16, 0],
+        position: u8vec3(8, 16, 8),
         block_type: 3,
     },
     Vertex {
-        position: [4, 16, 0],
-        block_type: 4,
+        position: u8vec3(0, 8, 8),
+        block_type: 0,
     },
     Vertex {
-        position: [0, 8, 0],
-        block_type: 5,
+        position: u8vec3(8, 0, 8),
+        block_type: 2,
+    },
+    Vertex {
+        position: u8vec3(8, 8, 0),
+        block_type: 4,
     },
 ];
 
-const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5];
+const INDICES: &[u16] = &[
+    0, 2, 1, 0, 1, 5, 0, 5, 4, 0, 4, 2, 3, 1, 2, 3, 5, 1, 3, 4, 5, 3, 2, 4,
+];
+
+struct Camera {
+    eye: Vec3,
+    target: Vec3,
+    up: Vec3,
+    aspect: f32,
+    fovy: f32,
+    znear: f32,
+    zfar: f32,
+}
+
+impl Camera {
+    fn build_view_projection_matrix(&self) -> Mat4 {
+        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
+        let proj = Mat4::perspective_rh(
+            self.fovy / 180.0 * f32::consts::PI,
+            self.aspect,
+            self.znear,
+            self.zfar,
+        );
+
+        return proj * view;
+    }
+}
 
 pub struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -72,10 +99,13 @@ pub struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     pub manual_size: bool,
     window: &'a Window,
-    render_pipeline: wgpu::RenderPipeline,
+    camera: Camera,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group: wgpu::BindGroup,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl<'a> State<'a> {
@@ -136,10 +166,62 @@ impl<'a> State<'a> {
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
+        let camera = Camera {
+            eye: (8.0, 24.0, 40.0).into(),
+            target: (8.0, 8.0, 8.0).into(),
+            up: Vec3::Y,
+            aspect: config.width as f32 / config.height as f32,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera.build_view_projection_matrix()]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: wgpu::BufferUsages::INDEX,
+        });
+        let num_indices = INDICES.len() as u32;
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[&camera_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -181,18 +263,6 @@ impl<'a> State<'a> {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let num_indices = INDICES.len() as u32;
-
         Self {
             surface,
             device,
@@ -205,6 +275,9 @@ impl<'a> State<'a> {
             vertex_buffer,
             index_buffer,
             num_indices,
+            camera,
+            camera_buffer,
+            camera_bind_group,
         }
     }
 
@@ -265,6 +338,13 @@ impl<'a> State<'a> {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+
+            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+            self.queue.write_buffer(
+                &self.camera_buffer,
+                0,
+                bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+            );
         }
     }
 
@@ -308,6 +388,7 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

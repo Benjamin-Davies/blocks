@@ -9,6 +9,9 @@ const BLOCK_COLORS = array<u32, 6>(
     0xff00ffff,
 );
 
+@group(0) @binding(0)
+var<uniform> camera: mat4x4<f32>;
+
 struct VertexInput {
     @location(0) position_and_block_type: vec4<u32>,
 };
@@ -26,7 +29,7 @@ fn vs_main(
     let block_type = model.position_and_block_type.w;
 
     var out: VertexOutput;
-    out.clip_position = vec4<f32>(vec3<f32>(position) / 16.0 - vec3<f32>(0.5, 0.5, 0.0), 1.0);
+    out.clip_position = camera * vec4<f32>(vec3<f32>(position), 1.0);
     out.color = srgb_to_linear(BLOCK_COLORS[block_type]);
     return out;
 }
