@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["blocks-web"]
+members = ["blocks", "blocks-web"]
 
 [workspace.dependencies]
-wgpu = "24.0.1"
+log = "0.4"
+wgpu = { version = "24.0.1", features = ["wgsl"] }
+winit = { version = "0.29", features = ["rwh_05"] }
+
+blocks.path = "blocks"
