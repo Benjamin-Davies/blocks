@@ -29,7 +29,7 @@ fn vs_main(
     let block_type = model.position_and_block_type.w;
 
     var out: VertexOutput;
-    out.clip_position = camera * vec4<f32>(vec3<f32>(position), 1.0);
+    out.clip_position = camera * vec4<f32>(vec3<f32>(position) / 8.0 - 1.0, 1.0);
     out.color = srgb_to_linear(BLOCK_COLORS[block_type]);
     return out;
 }

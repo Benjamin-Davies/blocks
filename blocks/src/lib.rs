@@ -1,10 +1,11 @@
 use std::{f32, mem};
 
-use glam::{u8vec3, Mat4, U8Vec3, Vec3};
+use glam::{u8vec3, vec3, EulerRot, Mat4, Quat, U8Vec3, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{
+    dpi::PhysicalPosition,
     error::EventLoopError,
-    event::{ElementState, Event, KeyEvent, WindowEvent},
+    event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
@@ -106,6 +107,8 @@ pub struct State<'a> {
     index_buffer: wgpu::Buffer,
     num_indices: u32,
     render_pipeline: wgpu::RenderPipeline,
+    last_mouse_position: PhysicalPosition<f64>,
+    last_mouse_drag_position: Option<PhysicalPosition<f64>>,
 }
 
 impl<'a> State<'a> {
@@ -163,8 +166,8 @@ impl<'a> State<'a> {
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
         let camera = Camera {
-            eye: (8.0, 24.0, 40.0).into(),
-            target: (8.0, 8.0, 8.0).into(),
+            eye: 5.0 * Vec3::Z,
+            target: Vec3::ZERO,
             up: Vec3::Y,
             aspect: config.width as f32 / config.height as f32,
             fovy: 45.0,
@@ -274,6 +277,8 @@ impl<'a> State<'a> {
             camera,
             camera_buffer,
             camera_bind_group,
+            last_mouse_position: PhysicalPosition::new(0.0, 0.0),
+            last_mouse_drag_position: None,
         }
     }
 
@@ -344,8 +349,48 @@ impl<'a> State<'a> {
         }
     }
 
-    fn input(&mut self, _event: &WindowEvent) -> bool {
-        false
+    fn input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::MouseInput { button, state, .. } => match button {
+                MouseButton::Left => {
+                    match state {
+                        ElementState::Pressed => {
+                            self.last_mouse_drag_position = Some(self.last_mouse_position);
+                        }
+                        ElementState::Released => {
+                            self.last_mouse_drag_position = None;
+                        }
+                    }
+                    true
+                }
+                _ => false,
+            },
+            WindowEvent::CursorMoved { position, .. } => {
+                if let Some(last_drag_position) = self.last_mouse_drag_position {
+                    let delta_x = position.x - last_drag_position.x;
+                    let delta_y = position.y - last_drag_position.y;
+
+                    let rotation = Quat::from_euler(
+                        EulerRot::ZYX,
+                        0.0,
+                        0.005 * delta_x as f32,
+                        0.005 * delta_y as f32,
+                    );
+                    self.camera.eye = rotation * self.camera.eye;
+                    self.queue.write_buffer(
+                        &self.camera_buffer,
+                        0,
+                        bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+                    );
+
+                    self.last_mouse_drag_position = Some(*position);
+                }
+                self.last_mouse_position = *position;
+
+                true
+            }
+            _ => false,
+        }
     }
 
     fn update(&mut self) {}
