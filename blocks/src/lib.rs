@@ -1,6 +1,5 @@
-use std::{f32, mem};
-
-use glam::{u8vec3, EulerRot, Quat, U8Vec3};
+use glam::{EulerRot, Quat};
+use subchunk::Subchunk;
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalPosition,
@@ -11,8 +10,11 @@ use winit::{
     window::Window,
 };
 
+mod block;
 mod camera;
+mod subchunk;
 mod texture;
+mod voxel_renderer;
 
 const CORNFLOWER_BLUE: wgpu::Color = wgpu::Color {
     r: 0.4,
@@ -20,56 +22,6 @@ const CORNFLOWER_BLUE: wgpu::Color = wgpu::Color {
     b: 0.9,
     a: 1.0,
 };
-
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-struct Vertex {
-    position: U8Vec3,
-    block_type: u8,
-}
-
-impl Vertex {
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Uint8x4];
-
-    fn desc() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
-        }
-    }
-}
-
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: u8vec3(16, 8, 8),
-        block_type: 1,
-    },
-    Vertex {
-        position: u8vec3(8, 16, 8),
-        block_type: 3,
-    },
-    Vertex {
-        position: u8vec3(8, 8, 16),
-        block_type: 5,
-    },
-    Vertex {
-        position: u8vec3(0, 8, 8),
-        block_type: 0,
-    },
-    Vertex {
-        position: u8vec3(8, 0, 8),
-        block_type: 2,
-    },
-    Vertex {
-        position: u8vec3(8, 8, 0),
-        block_type: 4,
-    },
-];
-
-const INDICES: &[u16] = &[
-    0, 1, 2, 0, 5, 1, 0, 4, 5, 0, 2, 4, 3, 2, 1, 3, 1, 5, 3, 5, 4, 3, 4, 2,
-];
 
 pub struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -83,10 +35,7 @@ pub struct State<'a> {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
-    render_pipeline: wgpu::RenderPipeline,
+    voxel_renderer: voxel_renderer::VoxelRenderer,
     last_mouse_position: PhysicalPosition<f64>,
     last_mouse_drag_position: Option<PhysicalPosition<f64>>,
 }
@@ -143,8 +92,6 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
-
         let camera = camera::Camera::new(config.width as f32 / config.height as f32);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -180,18 +127,6 @@ impl<'a> State<'a> {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let num_indices = INDICES.len() as u32;
-
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -199,49 +134,13 @@ impl<'a> State<'a> {
                 push_constant_ranges: &[],
             });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&render_pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: texture::Texture::DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+        let mut voxel_renderer =
+            voxel_renderer::VoxelRenderer::new(&device, &render_pipeline_layout, config.format);
+
+        let mut subchunk = Subchunk::default();
+        subchunk.add_sphere();
+        subchunk.add_dirt();
+        voxel_renderer.update_subchunk(&device, &subchunk);
 
         Self {
             surface,
@@ -251,14 +150,11 @@ impl<'a> State<'a> {
             size,
             manual_size: false,
             window,
-            render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
             camera,
             camera_buffer,
             camera_bind_group,
             depth_texture,
+            voxel_renderer,
             last_mouse_position: PhysicalPosition::new(0.0, 0.0),
             last_mouse_drag_position: None,
         }
@@ -424,11 +320,8 @@ impl<'a> State<'a> {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            self.voxel_renderer
+                .render(&mut render_pass, &self.camera_bind_group);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
