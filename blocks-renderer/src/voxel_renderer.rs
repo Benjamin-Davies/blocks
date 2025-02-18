@@ -3,7 +3,9 @@ use std::mem;
 use glam::{u8vec3, I8Vec3, U8Vec3};
 use wgpu::util::DeviceExt;
 
-use crate::{block::Block, subchunk::Subchunk, texture};
+use blocks_game::{block::Block, subchunk::Subchunk};
+
+use crate::texture;
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]

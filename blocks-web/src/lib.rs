@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
-use blocks::State;
+use blocks_renderer::State;
 
 #[wasm_bindgen(start)]
 async fn run() {

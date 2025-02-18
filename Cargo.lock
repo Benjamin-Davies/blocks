@@ -165,10 +165,28 @@ dependencies = [
 name = "blocks"
 version = "0.1.0"
 dependencies = [
+ "blocks-renderer",
+ "pollster",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "blocks-game"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+]
+
+[[package]]
+name = "blocks-renderer"
+version = "0.1.0"
+dependencies = [
+ "blocks-game",
  "bytemuck",
  "glam",
  "log",
- "pollster",
  "wgpu",
  "winit",
 ]
@@ -177,7 +195,7 @@ dependencies = [
 name = "blocks-web"
 version = "0.1.0"
 dependencies = [
- "blocks",
+ "blocks-renderer",
  "console_error_panic_hook",
  "console_log",
  "log",

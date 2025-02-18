@@ -1,6 +1,6 @@
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
-use blocks::State;
+use blocks_renderer::State;
 
 #[pollster::main]
 async fn main() {

@@ -1,0 +1,13 @@
+[package]
+name = "blocks-renderer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck.workspace = true
+glam.workspace = true
+log.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+
+blocks-game.workspace = true

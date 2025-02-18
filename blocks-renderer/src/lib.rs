@@ -1,5 +1,4 @@
 use glam::{EulerRot, Quat};
-use subchunk::Subchunk;
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalPosition,
@@ -10,9 +9,9 @@ use winit::{
     window::Window,
 };
 
-mod block;
+use blocks_game::subchunk::Subchunk;
+
 mod camera;
-mod subchunk;
 mod texture;
 mod voxel_renderer;
 

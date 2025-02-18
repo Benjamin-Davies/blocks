@@ -17,4 +17,4 @@ log.workspace = true
 wgpu = { workspace = true, features = ["webgl"] }
 winit.workspace = true
 
-blocks.workspace = true
+blocks-renderer.workspace = true
