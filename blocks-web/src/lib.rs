@@ -24,7 +24,7 @@ async fn run() {
             .expect("Couldn't append canvas to document body.");
     }
 
-    let mut state = State::new(&window, wgpu::Backends::GL).await;
+    let mut state = State::new(&window, wgpu::Backends::GL, Clock::new()).await;
 
     let win = web_sys::window().unwrap();
     let w = win.inner_width().unwrap().as_f64().unwrap() as u32;
@@ -33,4 +33,32 @@ async fn run() {
     state.manual_size = true;
 
     state.run(event_loop).unwrap();
+}
+
+struct Clock {
+    performance: web_sys::Performance,
+}
+
+impl Clock {
+    fn new() -> Self {
+        let window = web_sys::window().expect("Window should be available.");
+        let performance = window
+            .performance()
+            .expect("Performance should be available.");
+        Self { performance }
+    }
+}
+
+impl blocks_renderer::clock::Clock for Clock {
+    /// Time in milliseconds since the page started loading.
+    type Instant = f64;
+
+    fn now(&self) -> Self::Instant {
+        self.performance.now()
+    }
+
+    fn seconds_elapsed(&self, start: Self::Instant, end: Self::Instant) -> f32 {
+        let seconds = (end - start) / 1000.0;
+        seconds as f32
+    }
 }

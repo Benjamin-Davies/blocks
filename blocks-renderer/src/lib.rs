@@ -1,15 +1,17 @@
-use glam::{EulerRot, Quat};
+use clock::Clock;
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalPosition,
     error::EventLoopError,
     event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
+    keyboard::{Key, KeyCode, PhysicalKey},
     window::Window,
 };
 
-use blocks_game::subchunk::Subchunk;
+use blocks_game::{player::Player, subchunk::Subchunk};
+
+pub mod clock;
 
 mod camera;
 mod texture;
@@ -22,7 +24,9 @@ const CORNFLOWER_BLUE: wgpu::Color = wgpu::Color {
     a: 1.0,
 };
 
-pub struct State<'a> {
+const MOUSE_SENSITIVITY: f32 = 0.1;
+
+pub struct State<'a, C: Clock> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -35,12 +39,15 @@ pub struct State<'a> {
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     voxel_renderer: voxel_renderer::VoxelRenderer,
+    player: Player,
     last_mouse_position: PhysicalPosition<f64>,
     last_mouse_drag_position: Option<PhysicalPosition<f64>>,
+    clock: C,
+    last_frame: C::Instant,
 }
 
-impl<'a> State<'a> {
-    pub async fn new(window: &'a Window, backends: wgpu::Backends) -> State<'a> {
+impl<'a, C: Clock> State<'a, C> {
+    pub async fn new(window: &'a Window, backends: wgpu::Backends, clock: C) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -141,6 +148,8 @@ impl<'a> State<'a> {
         subchunk.add_dirt();
         voxel_renderer.update_subchunk(&device, &subchunk);
 
+        let player = Player::new();
+
         Self {
             surface,
             device,
@@ -154,8 +163,11 @@ impl<'a> State<'a> {
             camera_bind_group,
             depth_texture,
             voxel_renderer,
+            player,
             last_mouse_position: PhysicalPosition::new(0.0, 0.0),
             last_mouse_drag_position: None,
+            last_frame: clock.now(),
+            clock,
         }
     }
 
@@ -172,7 +184,7 @@ impl<'a> State<'a> {
                             event:
                                 KeyEvent {
                                     state: ElementState::Pressed,
-                                    physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                    physical_key: PhysicalKey::Code(KeyCode::KeyQ),
                                     ..
                                 },
                             ..
@@ -254,13 +266,9 @@ impl<'a> State<'a> {
                     let delta_x = position.x - last_drag_position.x;
                     let delta_y = position.y - last_drag_position.y;
 
-                    let rotation = Quat::from_euler(
-                        EulerRot::ZYX,
-                        0.0,
-                        -0.005 * delta_x as f32,
-                        -0.005 * delta_y as f32,
-                    );
-                    self.camera.rotate(rotation);
+                    self.player.head_angle.x += MOUSE_SENSITIVITY * delta_y as f32;
+                    self.player.head_angle.y += MOUSE_SENSITIVITY * delta_x as f32;
+                    self.camera.update(&self.player);
                     self.queue.write_buffer(
                         &self.camera_buffer,
                         0,
@@ -273,11 +281,70 @@ impl<'a> State<'a> {
 
                 true
             }
+            WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
+                PhysicalKey::Code(KeyCode::KeyW) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.z = 1.0,
+                        ElementState::Released => self.player.walk_vector.z = 0.0,
+                    }
+                    true
+                }
+                PhysicalKey::Code(KeyCode::KeyA) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.x = 1.0,
+                        ElementState::Released => self.player.walk_vector.x = 0.0,
+                    }
+                    true
+                }
+                PhysicalKey::Code(KeyCode::KeyS) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.z = -1.0,
+                        ElementState::Released => self.player.walk_vector.z = 0.0,
+                    }
+                    true
+                }
+                PhysicalKey::Code(KeyCode::KeyD) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.x = -1.0,
+                        ElementState::Released => self.player.walk_vector.x = 0.0,
+                    }
+                    true
+                }
+                PhysicalKey::Code(KeyCode::Space) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.y = 1.0,
+                        ElementState::Released => self.player.walk_vector.y = 0.0,
+                    }
+                    true
+                }
+                PhysicalKey::Code(KeyCode::ShiftLeft) => {
+                    match event.state {
+                        ElementState::Pressed => self.player.walk_vector.y = -1.0,
+                        ElementState::Released => self.player.walk_vector.y = 0.0,
+                    }
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        let this_frame = self.clock.now();
+        let delta_time = self.clock.seconds_elapsed(self.last_frame, this_frame);
+
+        self.player.update(delta_time);
+
+        self.camera.update(&self.player);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+        );
+
+        self.last_frame = this_frame;
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         if self.size.width == 0 || self.size.height == 0 {

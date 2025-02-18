@@ -31,10 +31,10 @@ fn vs_main(
     let normal = model.normal_and_padding.xyz;
     var out: VertexOutput;
 
-    out.clip_position = camera * vec4<f32>(vec3<f32>(position) / 8.0 - 1.0, 1.0);
+    out.clip_position = camera * vec4<f32>(vec3<f32>(position), 1.0);
 
     let color = srgb_to_linear(BLOCK_COLORS[block_type]);
-    let light_direction = normalize(vec3<f32>(1.0, 2.0, 3.0));
+    let light_direction = normalize(vec3<f32>(1.0, 3.0, -2.0));
     let value = 0.5 + 0.5 * max(0.0, dot(vec3<f32>(normal), light_direction));
     out.color = darken(color, value);
 

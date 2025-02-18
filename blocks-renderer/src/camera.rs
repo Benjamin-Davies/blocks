@@ -1,10 +1,11 @@
 use std::f32;
 
-use glam::{Mat4, Quat, Vec3};
+use blocks_game::player::Player;
+use glam::{Mat4, Vec3};
 
 pub struct Camera {
     eye: Vec3,
-    target: Vec3,
+    dir: Vec3,
     up: Vec3,
     pub aspect: f32,
     fovy: f32,
@@ -15,8 +16,8 @@ pub struct Camera {
 impl Camera {
     pub fn new(aspect: f32) -> Self {
         Self {
-            eye: 5.0 * Vec3::Z,
-            target: Vec3::ZERO,
+            eye: Vec3::ZERO,
+            dir: Vec3::Z,
             up: Vec3::Y,
             aspect,
             fovy: 45.0,
@@ -25,18 +26,15 @@ impl Camera {
         }
     }
 
-    pub fn rotate(&mut self, rotation: Quat) {
-        self.eye = rotation * self.eye;
+    pub fn update(&mut self, player: &Player) {
+        self.eye = player.head_position();
+        self.dir = player.looking_direction();
+        self.up = Vec3::Y;
     }
 
     pub fn build_view_projection_matrix(&self) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
-        let proj = Mat4::perspective_rh(
-            self.fovy / 180.0 * f32::consts::PI,
-            self.aspect,
-            self.znear,
-            self.zfar,
-        );
+        let view = Mat4::look_to_rh(self.eye, self.dir, self.up);
+        let proj = Mat4::perspective_rh(self.fovy.to_radians(), self.aspect, self.znear, self.zfar);
 
         proj * view
     }
