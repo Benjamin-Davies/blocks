@@ -316,7 +316,7 @@ impl<'a> State<'a> {
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width <= 0 || new_size.height <= 0 {
+        if new_size.width == 0 || new_size.height == 0 {
             return;
         }
 
@@ -338,20 +338,22 @@ impl<'a> State<'a> {
 
     fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
-            WindowEvent::MouseInput { button, state, .. } => match button {
-                MouseButton::Left => {
-                    match state {
-                        ElementState::Pressed => {
-                            self.last_mouse_drag_position = Some(self.last_mouse_position);
-                        }
-                        ElementState::Released => {
-                            self.last_mouse_drag_position = None;
-                        }
-                    }
-                    true
-                }
-                _ => false,
-            },
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state: ElementState::Pressed,
+                ..
+            } => {
+                self.last_mouse_drag_position = Some(self.last_mouse_position);
+                true
+            }
+            WindowEvent::MouseInput {
+                button: MouseButton::Left,
+                state: ElementState::Released,
+                ..
+            } => {
+                self.last_mouse_drag_position = None;
+                true
+            }
             WindowEvent::CursorMoved { position, .. } => {
                 if let Some(last_drag_position) = self.last_mouse_drag_position {
                     let delta_x = position.x - last_drag_position.x;

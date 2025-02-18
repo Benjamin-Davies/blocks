@@ -38,6 +38,6 @@ impl Camera {
             self.zfar,
         );
 
-        return proj * view;
+        proj * view
     }
 }
