@@ -1,6 +1,6 @@
 use std::{f32, mem};
 
-use glam::{u8vec3, vec3, EulerRot, Mat4, Quat, U8Vec3, Vec3};
+use glam::{u8vec3, EulerRot, Quat, U8Vec3};
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalPosition,
@@ -10,6 +10,9 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
+
+mod camera;
+mod texture;
 
 const CORNFLOWER_BLUE: wgpu::Color = wgpu::Color {
     r: 0.4,
@@ -68,30 +71,6 @@ const INDICES: &[u16] = &[
     0, 1, 2, 0, 5, 1, 0, 4, 5, 0, 2, 4, 3, 2, 1, 3, 1, 5, 3, 5, 4, 3, 4, 2,
 ];
 
-struct Camera {
-    eye: Vec3,
-    target: Vec3,
-    up: Vec3,
-    aspect: f32,
-    fovy: f32,
-    znear: f32,
-    zfar: f32,
-}
-
-impl Camera {
-    fn build_view_projection_matrix(&self) -> Mat4 {
-        let view = Mat4::look_at_rh(self.eye, self.target, self.up);
-        let proj = Mat4::perspective_rh(
-            self.fovy / 180.0 * f32::consts::PI,
-            self.aspect,
-            self.znear,
-            self.zfar,
-        );
-
-        return proj * view;
-    }
-}
-
 pub struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -100,9 +79,10 @@ pub struct State<'a> {
     size: winit::dpi::PhysicalSize<u32>,
     pub manual_size: bool,
     window: &'a Window,
-    camera: Camera,
+    camera: camera::Camera,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    depth_texture: texture::Texture,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
@@ -165,15 +145,7 @@ impl<'a> State<'a> {
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
-        let camera = Camera {
-            eye: 5.0 * Vec3::Z,
-            target: Vec3::ZERO,
-            up: Vec3::Y,
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
+        let camera = camera::Camera::new(config.width as f32 / config.height as f32);
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
@@ -204,6 +176,9 @@ impl<'a> State<'a> {
             }],
             label: Some("camera_bind_group"),
         });
+
+        let depth_texture =
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
@@ -252,7 +227,13 @@ impl<'a> State<'a> {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: texture::Texture::DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
@@ -277,6 +258,7 @@ impl<'a> State<'a> {
             camera,
             camera_buffer,
             camera_bind_group,
+            depth_texture,
             last_mouse_position: PhysicalPosition::new(0.0, 0.0),
             last_mouse_drag_position: None,
         }
@@ -334,19 +316,24 @@ impl<'a> State<'a> {
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
-
-            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
-            self.queue.write_buffer(
-                &self.camera_buffer,
-                0,
-                bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
-            );
+        if new_size.width <= 0 || new_size.height <= 0 {
+            return;
         }
+
+        self.size = new_size;
+        self.config.width = new_size.width;
+        self.config.height = new_size.height;
+        self.surface.configure(&self.device, &self.config);
+
+        self.depth_texture =
+            texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+
+        self.camera.aspect = new_size.width as f32 / new_size.height as f32;
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+        );
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -376,7 +363,7 @@ impl<'a> State<'a> {
                         -0.005 * delta_x as f32,
                         -0.005 * delta_y as f32,
                     );
-                    self.camera.eye = rotation * self.camera.eye;
+                    self.camera.rotate(rotation);
                     self.queue.write_buffer(
                         &self.camera_buffer,
                         0,
@@ -423,7 +410,14 @@ impl<'a> State<'a> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
