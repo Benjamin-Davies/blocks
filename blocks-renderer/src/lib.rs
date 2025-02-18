@@ -1,8 +1,9 @@
 use clock::Clock;
 use wgpu::util::DeviceExt;
 use winit::{
+    dpi::PhysicalPosition,
     error::EventLoopError,
-    event::{DeviceEvent, ElementState, Event, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyEvent, MouseButton, TouchPhase, WindowEvent},
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
     window::{CursorGrabMode, Window},
@@ -42,6 +43,7 @@ pub struct State<'a, C: Clock> {
     clock: C,
     last_frame: C::Instant,
     cursor_grabbed: bool,
+    last_touch_location: PhysicalPosition<f64>,
 }
 
 impl<'a, C: Clock> State<'a, C> {
@@ -165,6 +167,7 @@ impl<'a, C: Clock> State<'a, C> {
             last_frame: clock.now(),
             clock,
             cursor_grabbed: false,
+            last_touch_location: PhysicalPosition::new(0.0, 0.0),
         }
     }
 
@@ -314,6 +317,23 @@ impl<'a, C: Clock> State<'a, C> {
                 }
                 _ => false,
             },
+            WindowEvent::Touch(touch) => match touch.phase {
+                TouchPhase::Started => {
+                    self.last_touch_location = touch.location;
+                    true
+                }
+                TouchPhase::Moved => {
+                    let delta_x = touch.location.x - self.last_touch_location.x;
+                    let delta_y = touch.location.y - self.last_touch_location.y;
+
+                    self.player.head_angle.x += MOUSE_SENSITIVITY * delta_y as f32;
+                    self.player.head_angle.y += MOUSE_SENSITIVITY * delta_x as f32;
+
+                    self.last_touch_location = touch.location;
+                    true
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -325,12 +345,6 @@ impl<'a, C: Clock> State<'a, C> {
 
                 self.player.head_angle.x -= MOUSE_SENSITIVITY * delta_y as f32;
                 self.player.head_angle.y -= MOUSE_SENSITIVITY * delta_x as f32;
-                self.camera.update(&self.player);
-                self.queue.write_buffer(
-                    &self.camera_buffer,
-                    0,
-                    bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
-                );
 
                 true
             }
