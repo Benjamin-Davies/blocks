@@ -1,12 +1,11 @@
 use clock::Clock;
 use wgpu::util::DeviceExt;
 use winit::{
-    dpi::PhysicalPosition,
     error::EventLoopError,
-    event::{ElementState, Event, KeyEvent, MouseButton, WindowEvent},
+    event::{DeviceEvent, ElementState, Event, KeyEvent, MouseButton, WindowEvent},
     event_loop::EventLoop,
-    keyboard::{Key, KeyCode, PhysicalKey},
-    window::Window,
+    keyboard::{KeyCode, PhysicalKey},
+    window::{CursorGrabMode, Window},
 };
 
 use blocks_game::{player::Player, subchunk::Subchunk};
@@ -40,10 +39,9 @@ pub struct State<'a, C: Clock> {
     depth_texture: texture::Texture,
     voxel_renderer: voxel_renderer::VoxelRenderer,
     player: Player,
-    last_mouse_position: PhysicalPosition<f64>,
-    last_mouse_drag_position: Option<PhysicalPosition<f64>>,
     clock: C,
     last_frame: C::Instant,
+    cursor_grabbed: bool,
 }
 
 impl<'a, C: Clock> State<'a, C> {
@@ -164,15 +162,17 @@ impl<'a, C: Clock> State<'a, C> {
             depth_texture,
             voxel_renderer,
             player,
-            last_mouse_position: PhysicalPosition::new(0.0, 0.0),
-            last_mouse_drag_position: None,
             last_frame: clock.now(),
             clock,
+            cursor_grabbed: false,
         }
     }
 
     pub fn run(&mut self, event_loop: EventLoop<()>) -> Result<(), EventLoopError> {
         event_loop.run(move |event, control_flow| match event {
+            Event::DeviceEvent { ref event, .. } => {
+                self.device_input(event);
+            }
             Event::WindowEvent {
                 ref event,
                 window_id,
@@ -250,35 +250,23 @@ impl<'a, C: Clock> State<'a, C> {
                 state: ElementState::Pressed,
                 ..
             } => {
-                self.last_mouse_drag_position = Some(self.last_mouse_position);
+                self.window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+                self.window.set_cursor_visible(false);
+                self.cursor_grabbed = true;
                 true
             }
-            WindowEvent::MouseInput {
-                button: MouseButton::Left,
-                state: ElementState::Released,
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        state: ElementState::Pressed,
+                        physical_key: PhysicalKey::Code(KeyCode::Escape),
+                        ..
+                    },
                 ..
             } => {
-                self.last_mouse_drag_position = None;
-                true
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                if let Some(last_drag_position) = self.last_mouse_drag_position {
-                    let delta_x = position.x - last_drag_position.x;
-                    let delta_y = position.y - last_drag_position.y;
-
-                    self.player.head_angle.x += MOUSE_SENSITIVITY * delta_y as f32;
-                    self.player.head_angle.y += MOUSE_SENSITIVITY * delta_x as f32;
-                    self.camera.update(&self.player);
-                    self.queue.write_buffer(
-                        &self.camera_buffer,
-                        0,
-                        bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
-                    );
-
-                    self.last_mouse_drag_position = Some(*position);
-                }
-                self.last_mouse_position = *position;
-
+                self.window.set_cursor_grab(CursorGrabMode::None).unwrap();
+                self.window.set_cursor_visible(true);
+                self.cursor_grabbed = false;
                 true
             }
             WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
@@ -326,6 +314,26 @@ impl<'a, C: Clock> State<'a, C> {
                 }
                 _ => false,
             },
+            _ => false,
+        }
+    }
+
+    pub fn device_input(&mut self, event: &DeviceEvent) -> bool {
+        match event {
+            DeviceEvent::MouseMotion { delta } if self.cursor_grabbed => {
+                let &(delta_x, delta_y) = delta;
+
+                self.player.head_angle.x -= MOUSE_SENSITIVITY * delta_y as f32;
+                self.player.head_angle.y -= MOUSE_SENSITIVITY * delta_x as f32;
+                self.camera.update(&self.player);
+                self.queue.write_buffer(
+                    &self.camera_buffer,
+                    0,
+                    bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+                );
+
+                true
+            }
             _ => false,
         }
     }

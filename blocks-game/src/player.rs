@@ -2,6 +2,7 @@ use glam::{vec3, Quat, Vec2, Vec3};
 
 const WALK_SPEED: f32 = 5.0;
 
+#[derive(Default)]
 pub struct Player {
     pub position: Vec3,
     pub head_angle: Vec2,
@@ -12,8 +13,7 @@ impl Player {
     pub fn new() -> Self {
         Self {
             position: vec3(0.5, 16.0, 0.5),
-            head_angle: Vec2::ZERO,
-            walk_vector: Vec3::ZERO,
+            ..Default::default()
         }
     }
 
