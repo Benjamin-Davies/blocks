@@ -43,12 +43,12 @@ const VERTICES: &[Vertex] = &[
         block_type: 1,
     },
     Vertex {
-        position: u8vec3(8, 8, 16),
-        block_type: 5,
-    },
-    Vertex {
         position: u8vec3(8, 16, 8),
         block_type: 3,
+    },
+    Vertex {
+        position: u8vec3(8, 8, 16),
+        block_type: 5,
     },
     Vertex {
         position: u8vec3(0, 8, 8),
@@ -65,7 +65,7 @@ const VERTICES: &[Vertex] = &[
 ];
 
 const INDICES: &[u16] = &[
-    0, 2, 1, 0, 1, 5, 0, 5, 4, 0, 4, 2, 3, 1, 2, 3, 5, 1, 3, 4, 5, 3, 2, 4,
+    0, 1, 2, 0, 5, 1, 0, 4, 5, 0, 2, 4, 3, 2, 1, 3, 1, 5, 3, 5, 4, 3, 4, 2,
 ];
 
 struct Camera {
@@ -373,8 +373,8 @@ impl<'a> State<'a> {
                     let rotation = Quat::from_euler(
                         EulerRot::ZYX,
                         0.0,
-                        0.005 * delta_x as f32,
-                        0.005 * delta_y as f32,
+                        -0.005 * delta_x as f32,
+                        -0.005 * delta_y as f32,
                     );
                     self.camera.eye = rotation * self.camera.eye;
                     self.queue.write_buffer(
