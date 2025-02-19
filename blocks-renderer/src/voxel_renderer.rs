@@ -125,6 +125,20 @@ impl VoxelRenderer {
             self.update_subchunk(device, subchunk_pos, subchunk);
         }
 
+        let mut deleted_subchunks = Vec::new();
+        for &(x, y, z) in self.subchunk_data.keys() {
+            if game
+                .chunks
+                .get(&(x, z))
+                .is_none_or(|c| y as usize >= c.subchunks.len())
+            {
+                deleted_subchunks.push((x, y, z));
+            }
+        }
+        for (x, y, z) in deleted_subchunks {
+            self.subchunk_data.remove(&(x, y, z));
+        }
+
         let instances = self.instances();
         if instances != old_instances {
             self.instance_buffer = Some(device.create_buffer_init(
@@ -171,26 +185,31 @@ impl VoxelRenderer {
             indices.push(i + 3);
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Voxel Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Voxel Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-        let num_indices = indices.len() as u32;
+        if indices.is_empty() {
+            self.subchunk_data
+                .remove(&(subchunk_pos.x, subchunk_pos.y, subchunk_pos.z));
+        } else {
+            let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Voxel Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            });
+            let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Voxel Index Buffer"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            });
+            let num_indices = indices.len() as u32;
 
-        self.subchunk_data.insert(
-            (subchunk_pos.x, subchunk_pos.y, subchunk_pos.z),
-            SubchunkData {
-                vertex_buffer,
-                index_buffer,
-                num_indices,
-            },
-        );
+            self.subchunk_data.insert(
+                (subchunk_pos.x, subchunk_pos.y, subchunk_pos.z),
+                SubchunkData {
+                    vertex_buffer,
+                    index_buffer,
+                    num_indices,
+                },
+            );
+        }
 
         subchunk.dirty = false;
     }
