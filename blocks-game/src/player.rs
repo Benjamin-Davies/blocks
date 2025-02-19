@@ -1,8 +1,15 @@
-use glam::{vec3, Quat, Vec2, Vec3};
+use glam::{vec3, IVec3, Quat, Vec2, Vec3};
+
+use crate::{
+    bounding_box::BoundingBox,
+    terrain::{block::Block, Terrain},
+};
 
 const GRAVITY: f32 = 20.0;
 const JUMP_VELOCITY: f32 = 8.0;
 const WALK_SPEED: f32 = 5.0;
+/// The amount of overlap past which a collision will not be resolved.
+const OVERLAP_THRESHOLD: f32 = 0.5;
 
 #[derive(Default)]
 pub struct Player {
@@ -19,6 +26,13 @@ impl Player {
             position: vec3(0.5, 72.0, 0.5),
             ..Default::default()
         }
+    }
+
+    pub fn bounding_box(&self) -> BoundingBox {
+        BoundingBox::new(
+            self.position + vec3(-0.3, 0.0, -0.3),
+            self.position + vec3(0.3, 1.8, 0.3),
+        )
     }
 
     pub fn head_position(&self) -> Vec3 {
@@ -56,8 +70,6 @@ impl Player {
         self.velocity.y -= GRAVITY * delta_time;
 
         self.position += self.velocity * delta_time;
-
-        self.collide_with_terrain();
     }
 
     fn constrain_head_angle(&mut self) {
@@ -75,19 +87,61 @@ impl Player {
         }
     }
 
-    fn collide_with_terrain(&mut self) {
+    pub fn collide_with_terrain(&mut self, terrain: &Terrain) {
         self.on_ground = false;
 
-        if self.position.y < 64.0 {
-            self.position.y = 64.0;
-            self.velocity.y = 0.0;
+        for (block_pos, _) in terrain
+            .blocks_intersecting(self.bounding_box())
+            .filter(|&(_, b)| b != Block::AIR)
+        {
+            self.collide_with_block(block_pos, terrain);
+        }
+    }
 
-            self.on_ground = true;
+    /// Moves the player by the smallest amount necessary to not collide with
+    /// the block at `block_pos`. This method assumes that the player currently
+    /// intersects the block.
+    fn collide_with_block(&mut self, block_pos: IVec3, terrain: &Terrain) {
+        let block = BoundingBox::new(block_pos.as_vec3(), block_pos.as_vec3() + Vec3::ONE);
+        let player = self.bounding_box();
+
+        // Top, bottom, etc. are faces of the block
+        let west = block.max.x - player.min.x;
+        let east = player.max.x - block.min.x;
+        let top = block.max.y - player.min.y;
+        let bottom = player.max.y - block.min.y;
+        let north = block.max.z - player.min.z;
+        let south = player.max.z - block.min.z;
+
+        if let Some((depth, direction)) = [
+            (west, Vec3::X),
+            (east, -Vec3::X),
+            (top, Vec3::Y),
+            (bottom, -Vec3::Y),
+            (north, Vec3::Z),
+            (south, -Vec3::Z),
+        ]
+        .into_iter()
+        .filter(|&(d, _)| d < OVERLAP_THRESHOLD)
+        .filter(|(_, v)| terrain.block(block_pos + v.as_ivec3()) == Block::AIR)
+        .min_by(|(d1, _), (d2, _)| d1.partial_cmp(d2).unwrap())
+        {
+            self.position += depth * direction;
+
+            let normal_velocity = self.velocity.dot(direction);
+            if normal_velocity < 0.0 {
+                self.velocity -= normal_velocity * direction;
+            }
+
+            if direction == Vec3::Y {
+                self.on_ground = true;
+            }
         }
     }
 
     pub fn jump(&mut self) {
         if self.on_ground {
+            self.on_ground = false;
             self.velocity.y = JUMP_VELOCITY;
         }
     }

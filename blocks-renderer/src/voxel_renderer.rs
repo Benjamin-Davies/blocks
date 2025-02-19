@@ -3,7 +3,10 @@ use std::{collections::BTreeMap, mem};
 use glam::{ivec3, u8vec3, I8Vec3, IVec3, U8Vec3};
 use wgpu::util::DeviceExt;
 
-use blocks_game::{block::Block, subchunk::Subchunk, Game};
+use blocks_game::{
+    terrain::{block::Block, subchunk::Subchunk},
+    Game,
+};
 
 use crate::texture;
 
@@ -176,17 +179,13 @@ impl VoxelRenderer {
     pub fn update(&mut self, device: &wgpu::Device, game: &mut Game) {
         let old_instances = self.instances();
 
-        for (subchunk_pos, subchunk) in game.dirty_subchunks_mut() {
+        for (subchunk_pos, subchunk) in game.terrain.dirty_subchunks_mut() {
             self.update_subchunk(device, subchunk_pos, subchunk);
         }
 
         let mut deleted_subchunks = Vec::new();
         for &(x, y, z) in self.subchunk_data.keys() {
-            if game
-                .chunks
-                .get(&(x, z))
-                .is_none_or(|c| y as usize >= c.subchunks.len())
-            {
+            if !game.terrain.subchunk_exists(ivec3(x, y, z)) {
                 deleted_subchunks.push((x, y, z));
             }
         }

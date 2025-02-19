@@ -1,6 +1,6 @@
 use glam::{ivec2, ivec3};
 
-use crate::{block::Block, chunk::Chunk, subchunk::Subchunk};
+use super::{block::Block, chunk::Chunk, subchunk::Subchunk};
 
 use self::noise::PerlinNoise;
 
