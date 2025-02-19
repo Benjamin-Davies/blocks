@@ -1,11 +1,13 @@
 use std::collections::BTreeMap;
 
+use generation::generate_chunk;
 use glam::{ivec3, IVec3};
 
 use crate::{chunk::Chunk, player::Player, subchunk::Subchunk};
 
 pub mod block;
 pub mod chunk;
+pub mod generation;
 pub mod player;
 pub mod subchunk;
 
@@ -19,7 +21,7 @@ impl Game {
         let mut chunks = BTreeMap::new();
         for x in -1..=1 {
             for z in -1..=1 {
-                chunks.insert((x, z), Chunk::new());
+                chunks.insert((x, z), generate_chunk(x, z));
             }
         }
 

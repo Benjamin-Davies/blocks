@@ -12,7 +12,7 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            position: vec3(0.5, 16.0, 0.5),
+            position: vec3(0.5, 72.0, 0.5),
             ..Default::default()
         }
     }
