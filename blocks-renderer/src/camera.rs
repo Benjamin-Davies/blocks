@@ -29,7 +29,7 @@ impl Camera {
     pub fn update(&mut self, player: &Player) {
         self.eye = player.head_position();
         self.dir = player.looking_direction();
-        self.up = Vec3::Y;
+        self.up = player.up_direction();
     }
 
     pub fn build_view_projection_matrix(&self) -> Mat4 {
