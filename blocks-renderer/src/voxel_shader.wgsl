@@ -1,14 +1,5 @@
 // Vertex shader
 
-const BLOCK_COLORS = array<u32, 6>(
-    0x00000000,
-    0x888888ff,
-    0x00ff00ff,
-    0xaa8855ff,
-    0x0000ffff,
-    0xff00ffff,
-);
-
 @group(0) @binding(0)
 var<uniform> camera: mat4x4<f32>;
 
@@ -20,34 +11,67 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec4<f32>,
+    @location(0) light_intensity: f32,
+    @location(1) block_type: u32,
+    @location(2) texture_coords: vec2<f32>,
 };
 
 @vertex
 fn vs_main(
     model: VertexInput,
 ) -> VertexOutput {
-    let position = model.position_and_block_type.xyz;
+    let position = vec3<f32>(model.position_and_block_type.xyz);
     let block_type = model.position_and_block_type.w;
     let normal = model.normal_and_padding.xyz;
-    let subchunk_position = model.subchunk_position;
+    let subchunk_position = vec3<f32>(model.subchunk_position);
     var out: VertexOutput;
 
-    out.clip_position = camera * vec4<f32>(vec3<f32>(position) + 16.0 * vec3<f32>(subchunk_position), 1.0);
+    out.clip_position = camera * vec4(position + 16.0 * subchunk_position, 1.0);
 
-    let color = srgb_to_linear(BLOCK_COLORS[block_type]);
     let light_direction = normalize(vec3<f32>(1.0, 3.0, -2.0));
     let value = 0.5 + 0.5 * max(0.0, dot(vec3<f32>(normal), light_direction));
-    out.color = darken(color, value);
+    out.light_intensity = value;
+    out.block_type = block_type;
+
+    var texture_coords: vec2<f32> = vec2<f32>(1.0, 0.0);
+    if (normal.x == -1) {
+        texture_coords = vec2(position.z, -position.y);
+    }
+    if (normal.x == 1) {
+        texture_coords = vec2(-position.z, -position.y);
+    }
+    if (normal.y == -1) {
+        texture_coords = vec2(position.x, -position.z);
+    }
+    if (normal.y == 1) {
+        texture_coords = vec2(-position.x, -position.z);
+    }
+    if (normal.z == -1) {
+        texture_coords = vec2(-position.x, -position.y);
+    }
+    if (normal.z == 1) {
+        texture_coords = vec2(position.x, -position.y);
+    }
+    out.texture_coords = texture_coords / 2.0;
 
     return out;
 }
 
 // Fragment shader
 
+@group(1) @binding(0)
+var t_diffuse: texture_2d<f32>;
+@group(1) @binding(1)
+var s_diffuse: sampler;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return in.color;
+    let texture_coords = (in.texture_coords + 16.0) % 1.0;
+    let texture_position = vec2(f32(in.block_type), 0.0);
+    let atlas_coords = (texture_coords + texture_position) / vec2(4.0, 1.0);
+
+    let sample = textureSample(t_diffuse, s_diffuse, atlas_coords);
+    return darken(sample, in.light_intensity);
 }
 
 fn srgb_to_linear(color: u32) -> vec4<f32> {

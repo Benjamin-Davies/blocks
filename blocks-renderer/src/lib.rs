@@ -133,15 +133,12 @@ impl<'a, C: Clock> State<'a, C> {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let render_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout],
-                push_constant_ranges: &[],
-            });
-
-        let voxel_renderer =
-            voxel_renderer::VoxelRenderer::new(&device, &render_pipeline_layout, config.format);
+        let voxel_renderer = voxel_renderer::VoxelRenderer::new(
+            &device,
+            &queue,
+            &camera_bind_group_layout,
+            config.format,
+        );
 
         let game = Game::new();
 

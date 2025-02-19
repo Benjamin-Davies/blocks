@@ -48,6 +48,7 @@ impl Instance {
 }
 
 pub struct VoxelRenderer {
+    texture_atlas_bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
     subchunk_data: BTreeMap<(i32, i32, i32), SubchunkData>,
     instance_buffer: Option<wgpu::Buffer>,
@@ -62,14 +63,67 @@ struct SubchunkData {
 impl VoxelRenderer {
     pub fn new(
         device: &wgpu::Device,
-        render_pipeline_layout: &wgpu::PipelineLayout,
+        queue: &wgpu::Queue,
+        camera_bind_group_layout: &wgpu::BindGroupLayout,
         color_target_format: wgpu::TextureFormat,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::include_wgsl!("voxel_shader.wgsl"));
 
+        let texture_atlas = texture::Texture::from_bytes(
+            device,
+            queue,
+            include_bytes!("../../assets/texture-atlas.png"),
+            "Voxel Texture Atlas",
+        );
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
+        let texture_atlas_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_atlas.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&texture_atlas.sampler),
+                },
+            ],
+            label: Some("texture_atlas_bind_group"),
+        });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Voxel Render Pipeline Layout"),
+                bind_group_layouts: &[camera_bind_group_layout, &texture_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Voxel Render Pipeline"),
-            layout: Some(render_pipeline_layout),
+            layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
@@ -112,6 +166,7 @@ impl VoxelRenderer {
         });
 
         Self {
+            texture_atlas_bind_group,
             render_pipeline,
             subchunk_data: BTreeMap::new(),
             instance_buffer: None,
@@ -224,6 +279,7 @@ impl VoxelRenderer {
         for (i, subchunk) in self.subchunk_data.values().enumerate() {
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.texture_atlas_bind_group, &[]);
             render_pass.set_vertex_buffer(0, subchunk.vertex_buffer.slice(..));
             render_pass
                 .set_index_buffer(subchunk.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
