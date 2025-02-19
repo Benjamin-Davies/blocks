@@ -1,12 +1,20 @@
 use crate::block::Block;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Subchunk {
     pub blocks: [[[Block; Self::SIZE]; Self::SIZE]; Self::SIZE],
+    pub dirty: bool,
 }
 
 impl Subchunk {
     pub const SIZE: usize = 16;
+
+    pub fn new() -> Self {
+        Self {
+            blocks: [[[Block::AIR; Self::SIZE]; Self::SIZE]; Self::SIZE],
+            dirty: true,
+        }
+    }
 
     pub fn block(&self, x: usize, y: usize, z: usize) -> Block {
         self.blocks[z][y][x]
@@ -65,5 +73,11 @@ impl Subchunk {
                 }
             }
         }
+    }
+}
+
+impl Default for Subchunk {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -15,6 +15,7 @@ var<uniform> camera: mat4x4<f32>;
 struct VertexInput {
     @location(0) position_and_block_type: vec4<u32>,
     @location(1) normal_and_padding: vec4<i32>,
+    @location(2) subchunk_position: vec3<i32>,
 };
 
 struct VertexOutput {
@@ -29,9 +30,10 @@ fn vs_main(
     let position = model.position_and_block_type.xyz;
     let block_type = model.position_and_block_type.w;
     let normal = model.normal_and_padding.xyz;
+    let subchunk_position = model.subchunk_position;
     var out: VertexOutput;
 
-    out.clip_position = camera * vec4<f32>(vec3<f32>(position), 1.0);
+    out.clip_position = camera * vec4<f32>(vec3<f32>(position) + 16.0 * vec3<f32>(subchunk_position), 1.0);
 
     let color = srgb_to_linear(BLOCK_COLORS[block_type]);
     let light_direction = normalize(vec3<f32>(1.0, 3.0, -2.0));

@@ -9,7 +9,7 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-use blocks_game::{player::Player, subchunk::Subchunk};
+use blocks_game::Game;
 
 pub mod clock;
 
@@ -39,7 +39,7 @@ pub struct State<'a, C: Clock> {
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     voxel_renderer: voxel_renderer::VoxelRenderer,
-    player: Player,
+    game: Game,
     clock: C,
     last_frame: C::Instant,
     cursor_grabbed: bool,
@@ -140,15 +140,10 @@ impl<'a, C: Clock> State<'a, C> {
                 push_constant_ranges: &[],
             });
 
-        let mut voxel_renderer =
+        let voxel_renderer =
             voxel_renderer::VoxelRenderer::new(&device, &render_pipeline_layout, config.format);
 
-        let mut subchunk = Subchunk::default();
-        subchunk.add_sphere();
-        subchunk.add_dirt();
-        voxel_renderer.update_subchunk(&device, &subchunk);
-
-        let player = Player::new();
+        let game = Game::new();
 
         Self {
             surface,
@@ -163,7 +158,7 @@ impl<'a, C: Clock> State<'a, C> {
             camera_bind_group,
             depth_texture,
             voxel_renderer,
-            player,
+            game,
             last_frame: clock.now(),
             clock,
             cursor_grabbed: false,
@@ -275,43 +270,43 @@ impl<'a, C: Clock> State<'a, C> {
             WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
                 PhysicalKey::Code(KeyCode::KeyW) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.z = 1.0,
-                        ElementState::Released => self.player.walk_vector.z = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.z = 1.0,
+                        ElementState::Released => self.game.player.walk_vector.z = 0.0,
                     }
                     true
                 }
                 PhysicalKey::Code(KeyCode::KeyA) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.x = 1.0,
-                        ElementState::Released => self.player.walk_vector.x = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.x = 1.0,
+                        ElementState::Released => self.game.player.walk_vector.x = 0.0,
                     }
                     true
                 }
                 PhysicalKey::Code(KeyCode::KeyS) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.z = -1.0,
-                        ElementState::Released => self.player.walk_vector.z = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.z = -1.0,
+                        ElementState::Released => self.game.player.walk_vector.z = 0.0,
                     }
                     true
                 }
                 PhysicalKey::Code(KeyCode::KeyD) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.x = -1.0,
-                        ElementState::Released => self.player.walk_vector.x = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.x = -1.0,
+                        ElementState::Released => self.game.player.walk_vector.x = 0.0,
                     }
                     true
                 }
                 PhysicalKey::Code(KeyCode::Space) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.y = 1.0,
-                        ElementState::Released => self.player.walk_vector.y = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.y = 1.0,
+                        ElementState::Released => self.game.player.walk_vector.y = 0.0,
                     }
                     true
                 }
                 PhysicalKey::Code(KeyCode::ShiftLeft) => {
                     match event.state {
-                        ElementState::Pressed => self.player.walk_vector.y = -1.0,
-                        ElementState::Released => self.player.walk_vector.y = 0.0,
+                        ElementState::Pressed => self.game.player.walk_vector.y = -1.0,
+                        ElementState::Released => self.game.player.walk_vector.y = 0.0,
                     }
                     true
                 }
@@ -326,8 +321,8 @@ impl<'a, C: Clock> State<'a, C> {
                     let delta_x = touch.location.x - self.last_touch_location.x;
                     let delta_y = touch.location.y - self.last_touch_location.y;
 
-                    self.player.head_angle.x += MOUSE_SENSITIVITY * delta_y as f32;
-                    self.player.head_angle.y += MOUSE_SENSITIVITY * delta_x as f32;
+                    self.game.player.head_angle.x += MOUSE_SENSITIVITY * delta_y as f32;
+                    self.game.player.head_angle.y += MOUSE_SENSITIVITY * delta_x as f32;
 
                     self.last_touch_location = touch.location;
                     true
@@ -343,8 +338,8 @@ impl<'a, C: Clock> State<'a, C> {
             DeviceEvent::MouseMotion { delta } if self.cursor_grabbed => {
                 let &(delta_x, delta_y) = delta;
 
-                self.player.head_angle.x -= MOUSE_SENSITIVITY * delta_y as f32;
-                self.player.head_angle.y -= MOUSE_SENSITIVITY * delta_x as f32;
+                self.game.player.head_angle.x -= MOUSE_SENSITIVITY * delta_y as f32;
+                self.game.player.head_angle.y -= MOUSE_SENSITIVITY * delta_x as f32;
 
                 true
             }
@@ -356,14 +351,16 @@ impl<'a, C: Clock> State<'a, C> {
         let this_frame = self.clock.now();
         let delta_time = self.clock.seconds_elapsed(self.last_frame, this_frame);
 
-        self.player.update(delta_time);
+        self.game.update(delta_time);
 
-        self.camera.update(&self.player);
+        self.camera.update(&self.game.player);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
         );
+
+        self.voxel_renderer.update(&self.device, &mut self.game);
 
         self.last_frame = this_frame;
     }

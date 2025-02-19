@@ -1,9 +1,9 @@
-use std::mem;
+use std::{collections::BTreeMap, mem};
 
-use glam::{u8vec3, I8Vec3, U8Vec3};
+use glam::{ivec3, u8vec3, I8Vec3, IVec3, U8Vec3};
 use wgpu::util::DeviceExt;
 
-use blocks_game::{block::Block, subchunk::Subchunk};
+use blocks_game::{block::Block, subchunk::Subchunk, Game};
 
 use crate::texture;
 
@@ -29,10 +29,33 @@ impl Vertex {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+struct Instance {
+    position: IVec3,
+}
+
+impl Instance {
+    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![2 => Sint32x3];
+
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
 pub struct VoxelRenderer {
     render_pipeline: wgpu::RenderPipeline,
-    vertex_buffer: Option<wgpu::Buffer>,
-    index_buffer: Option<wgpu::Buffer>,
+    subchunk_data: BTreeMap<(i32, i32, i32), SubchunkData>,
+    instance_buffer: Option<wgpu::Buffer>,
+}
+
+struct SubchunkData {
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
     num_indices: u32,
 }
 
@@ -50,7 +73,7 @@ impl VoxelRenderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
+                buffers: &[Vertex::desc(), Instance::desc()],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -90,13 +113,45 @@ impl VoxelRenderer {
 
         Self {
             render_pipeline,
-            vertex_buffer: None,
-            index_buffer: None,
-            num_indices: 0,
+            subchunk_data: BTreeMap::new(),
+            instance_buffer: None,
         }
     }
 
-    pub fn update_subchunk(&mut self, device: &wgpu::Device, subchunk: &Subchunk) {
+    pub fn update(&mut self, device: &wgpu::Device, game: &mut Game) {
+        let old_instances = self.instances();
+
+        for (subchunk_pos, subchunk) in game.dirty_subchunks_mut() {
+            self.update_subchunk(device, subchunk_pos, subchunk);
+        }
+
+        let instances = self.instances();
+        if instances != old_instances {
+            self.instance_buffer = Some(device.create_buffer_init(
+                &wgpu::util::BufferInitDescriptor {
+                    label: Some("Voxel Instance Buffer"),
+                    contents: bytemuck::cast_slice(&instances),
+                    usage: wgpu::BufferUsages::VERTEX,
+                },
+            ));
+        }
+    }
+
+    fn instances(&self) -> Vec<Instance> {
+        self.subchunk_data
+            .keys()
+            .map(|&(x, y, z)| Instance {
+                position: ivec3(x, y, z),
+            })
+            .collect()
+    }
+
+    pub fn update_subchunk(
+        &mut self,
+        device: &wgpu::Device,
+        subchunk_pos: IVec3,
+        subchunk: &mut Subchunk,
+    ) {
         let mut vertices = Vec::new();
         for x in 0..Subchunk::SIZE {
             for y in 0..Subchunk::SIZE {
@@ -128,22 +183,33 @@ impl VoxelRenderer {
         });
         let num_indices = indices.len() as u32;
 
-        self.vertex_buffer = Some(vertex_buffer);
-        self.index_buffer = Some(index_buffer);
-        self.num_indices = num_indices;
+        self.subchunk_data.insert(
+            (subchunk_pos.x, subchunk_pos.y, subchunk_pos.z),
+            SubchunkData {
+                vertex_buffer,
+                index_buffer,
+                num_indices,
+            },
+        );
+
+        subchunk.dirty = false;
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass, camera_bind_group: &wgpu::BindGroup) {
-        let (Some(vertex_buffer), Some(index_buffer)) = (&self.vertex_buffer, &self.index_buffer)
-        else {
+        if let Some(instance_buffer) = &self.instance_buffer {
+            render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
+        } else {
             return;
-        };
+        }
 
-        render_pass.set_pipeline(&self.render_pipeline);
-        render_pass.set_bind_group(0, camera_bind_group, &[]);
-        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-        render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        for (i, subchunk) in self.subchunk_data.values().enumerate() {
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, camera_bind_group, &[]);
+            render_pass.set_vertex_buffer(0, subchunk.vertex_buffer.slice(..));
+            render_pass
+                .set_index_buffer(subchunk.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..subchunk.num_indices, 0, i as u32..i as u32 + 1);
+        }
     }
 }
 
