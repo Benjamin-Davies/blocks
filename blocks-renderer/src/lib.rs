@@ -293,20 +293,13 @@ impl<'a, C: Clock> State<'a, C> {
                     }
                     true
                 }
-                PhysicalKey::Code(KeyCode::Space) => {
-                    match event.state {
-                        ElementState::Pressed => self.game.player.walk_vector.y = 1.0,
-                        ElementState::Released => self.game.player.walk_vector.y = 0.0,
+                PhysicalKey::Code(KeyCode::Space) => match event.state {
+                    ElementState::Pressed => {
+                        self.game.player.jump();
+                        true
                     }
-                    true
-                }
-                PhysicalKey::Code(KeyCode::ShiftLeft) => {
-                    match event.state {
-                        ElementState::Pressed => self.game.player.walk_vector.y = -1.0,
-                        ElementState::Released => self.game.player.walk_vector.y = 0.0,
-                    }
-                    true
-                }
+                    _ => false,
+                },
                 _ => false,
             },
             WindowEvent::Touch(touch) => match touch.phase {
