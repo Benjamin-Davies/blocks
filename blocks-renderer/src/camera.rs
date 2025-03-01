@@ -13,6 +13,14 @@ pub struct Camera {
     zfar: f32,
 }
 
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct CameraBufferContents {
+    view_projection: [f32; 4 * 4],
+    aspect: f32,
+    _padding: [f32; 3],
+}
+
 impl Camera {
     pub fn new(aspect: f32) -> Self {
         Self {
@@ -32,10 +40,18 @@ impl Camera {
         self.up = player.up_direction();
     }
 
-    pub fn build_view_projection_matrix(&self) -> Mat4 {
+    fn build_view_projection_matrix(&self) -> Mat4 {
         let view = Mat4::look_to_rh(self.eye, self.dir, self.up);
         let proj = Mat4::perspective_rh(self.fovy.to_radians(), self.aspect, self.znear, self.zfar);
 
         proj * view
+    }
+
+    pub fn buffer_contents(&self) -> CameraBufferContents {
+        CameraBufferContents {
+            view_projection: self.build_view_projection_matrix().to_cols_array(),
+            aspect: self.aspect,
+            _padding: [0.0; 3],
+        }
     }
 }

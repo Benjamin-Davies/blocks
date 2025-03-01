@@ -14,6 +14,7 @@ use blocks_game::{terrain::block::Block, Game};
 pub mod clock;
 
 mod camera;
+mod hud_renderer;
 mod ray_casting;
 mod texture;
 mod voxel_renderer;
@@ -40,6 +41,7 @@ pub struct State<'a, C: Clock> {
     camera_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
     voxel_renderer: voxel_renderer::VoxelRenderer,
+    hud_renderer: hud_renderer::HudRenderer,
     game: Game,
     clock: C,
     last_frame: C::Instant,
@@ -103,7 +105,7 @@ impl<'a, C: Clock> State<'a, C> {
 
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera.build_view_projection_matrix()]),
+            contents: bytemuck::cast_slice(&[camera.buffer_contents()]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -141,6 +143,13 @@ impl<'a, C: Clock> State<'a, C> {
             config.format,
         );
 
+        let hud_renderer = hud_renderer::HudRenderer::new(
+            &device,
+            &queue,
+            &camera_bind_group_layout,
+            config.format,
+        );
+
         let game = Game::new();
 
         Self {
@@ -156,6 +165,7 @@ impl<'a, C: Clock> State<'a, C> {
             camera_bind_group,
             depth_texture,
             voxel_renderer,
+            hud_renderer,
             game,
             last_frame: clock.now(),
             clock,
@@ -232,11 +242,6 @@ impl<'a, C: Clock> State<'a, C> {
             texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
 
         self.camera.aspect = new_size.width as f32 / new_size.height as f32;
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
-        );
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
@@ -372,7 +377,7 @@ impl<'a, C: Clock> State<'a, C> {
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
-            bytemuck::cast_slice(&[self.camera.build_view_projection_matrix()]),
+            bytemuck::cast_slice(&[self.camera.buffer_contents()]),
         );
 
         self.voxel_renderer.update(&self.device, &mut self.game);
@@ -421,6 +426,9 @@ impl<'a, C: Clock> State<'a, C> {
             });
 
             self.voxel_renderer
+                .render(&mut render_pass, &self.camera_bind_group);
+
+            self.hud_renderer
                 .render(&mut render_pass, &self.camera_bind_group);
         }
 
