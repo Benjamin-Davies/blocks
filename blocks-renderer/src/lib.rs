@@ -9,11 +9,12 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-use blocks_game::Game;
+use blocks_game::{terrain::block::Block, Game};
 
 pub mod clock;
 
 mod camera;
+mod ray_casting;
 mod texture;
 mod voxel_renderer;
 
@@ -245,9 +246,33 @@ impl<'a, C: Clock> State<'a, C> {
                 state: ElementState::Pressed,
                 ..
             } => {
-                self.window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
-                self.window.set_cursor_visible(false);
-                self.cursor_grabbed = true;
+                if self.cursor_grabbed {
+                    if let Some((block_pos, _)) = ray_casting::ray_cast(
+                        self.game.player.head_position(),
+                        self.game.player.looking_direction(),
+                        &self.game.terrain,
+                    ) {
+                        self.game.terrain.set_block(block_pos, Block::AIR);
+                    }
+                } else {
+                    self.window.set_cursor_grab(CursorGrabMode::Locked).unwrap();
+                    self.window.set_cursor_visible(false);
+                    self.cursor_grabbed = true;
+                }
+                true
+            }
+            WindowEvent::MouseInput {
+                button: MouseButton::Right,
+                state: ElementState::Pressed,
+                ..
+            } => {
+                if let Some((block_pos, face)) = ray_casting::ray_cast(
+                    self.game.player.head_position(),
+                    self.game.player.looking_direction(),
+                    &self.game.terrain,
+                ) {
+                    self.game.terrain.set_block(block_pos + face, Block::STONE);
+                }
                 true
             }
             WindowEvent::KeyboardInput {

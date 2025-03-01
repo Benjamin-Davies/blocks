@@ -3,6 +3,7 @@ use crate::{player::Player, terrain::Terrain};
 pub mod bounding_box;
 pub mod player;
 pub mod terrain;
+pub mod util;
 
 const MAX_DELTA_TIME: f32 = 0.05;
 

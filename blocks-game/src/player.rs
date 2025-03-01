@@ -3,6 +3,7 @@ use glam::{vec3, IVec3, Quat, Vec2, Vec3};
 use crate::{
     bounding_box::BoundingBox,
     terrain::{block::Block, Terrain},
+    util::TotalOrd,
 };
 
 const GRAVITY: f32 = 20.0;
@@ -124,7 +125,7 @@ impl Player {
         .into_iter()
         .filter(|&(d, _)| d < OVERLAP_THRESHOLD)
         .filter(|(_, v)| terrain.block(block_pos + v.as_ivec3()) == Block::AIR)
-        .min_by(|(d1, _), (d2, _)| d1.partial_cmp(d2).unwrap())
+        .min_by_key(|&(d, _)| TotalOrd(d))
         {
             self.position += depth * direction;
 

@@ -49,6 +49,25 @@ impl Terrain {
             })
     }
 
+    pub fn set_block(&mut self, block_pos: IVec3, block: Block) {
+        let subchunk_x = block_pos.x.div_euclid(Subchunk::SIZE as i32);
+        let subchunk_y = block_pos.y.div_euclid(Subchunk::SIZE as i32);
+        let subchunk_z = block_pos.z.div_euclid(Subchunk::SIZE as i32);
+        let block_x = block_pos.x.rem_euclid(Subchunk::SIZE as i32) as usize;
+        let block_y = block_pos.y.rem_euclid(Subchunk::SIZE as i32) as usize;
+        let block_z = block_pos.z.rem_euclid(Subchunk::SIZE as i32) as usize;
+
+        let Some(chunk) = self.chunks.get_mut(&(subchunk_x, subchunk_z)) else {
+            return;
+        };
+        let Some(subchunk) = chunk.subchunks.get_mut(subchunk_y as usize) else {
+            return;
+        };
+
+        subchunk.set_block(block_x, block_y, block_z, block);
+        subchunk.dirty = true;
+    }
+
     pub fn subchunk_exists(&self, subchunk_pos: IVec3) -> bool {
         self.chunks
             .get(&(subchunk_pos.x, subchunk_pos.z))
