@@ -9,7 +9,7 @@ use winit::{
     window::{CursorGrabMode, Window},
 };
 
-use blocks_game::{terrain::block::Block, Game};
+use blocks_game::{bounding_box::BoundingBox, terrain::block::Block, Game};
 
 pub mod clock;
 
@@ -276,7 +276,12 @@ impl<'a, C: Clock> State<'a, C> {
                     self.game.player.looking_direction(),
                     &self.game.terrain,
                 ) {
-                    self.game.terrain.set_block(block_pos + face, Block::STONE);
+                    let new_block_pos = block_pos + face;
+                    if !BoundingBox::of_block(new_block_pos)
+                        .intersects(&self.game.player.bounding_box())
+                    {
+                        self.game.terrain.set_block(new_block_pos, Block::STONE);
+                    }
                 }
                 true
             }

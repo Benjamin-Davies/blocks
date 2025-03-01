@@ -7,7 +7,7 @@ use crate::{
 };
 
 const GRAVITY: f32 = 20.0;
-const JUMP_VELOCITY: f32 = 8.0;
+const JUMP_VELOCITY: f32 = 10.0;
 const WALK_SPEED: f32 = 5.0;
 /// The amount of overlap past which a collision will not be resolved.
 const OVERLAP_THRESHOLD: f32 = 0.5;
