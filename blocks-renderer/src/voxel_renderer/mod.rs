@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, mem};
 
+use chunk_neighborhood::{SubchunkNeighborhood, SubchunkNeighborhoods};
 use glam::{ivec3, u8vec3, I8Vec3, IVec3, U8Vec3};
 use wgpu::util::DeviceExt;
 
@@ -9,6 +10,8 @@ use blocks_game::{
 };
 
 use crate::texture;
+
+mod chunk_neighborhood;
 
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
@@ -75,7 +78,7 @@ impl VoxelRenderer {
         let texture_atlas = texture::Texture::from_bytes(
             device,
             queue,
-            include_bytes!("../../assets/texture-atlas.png"),
+            include_bytes!("../../../assets/texture-atlas.png"),
             "Voxel Texture Atlas",
         );
 
@@ -179,8 +182,17 @@ impl VoxelRenderer {
     pub fn update(&mut self, device: &wgpu::Device, game: &mut Game) {
         let old_instances = self.instances();
 
-        for (subchunk_pos, subchunk) in game.terrain.dirty_subchunks_mut() {
-            self.update_subchunk(device, subchunk_pos, subchunk);
+        let mut updated_chunks = Vec::new();
+        for neighborhood in game
+            .terrain
+            .subchunk_neighborhoods()
+            .filter(SubchunkNeighborhood::is_dirty)
+        {
+            self.update_subchunk(device, &neighborhood);
+            updated_chunks.push(neighborhood.subchunk_pos);
+        }
+        for pos in updated_chunks {
+            game.terrain.subchunk_mut(pos).unwrap().dirty = false;
         }
 
         let mut deleted_subchunks = Vec::new();
@@ -214,31 +226,10 @@ impl VoxelRenderer {
             .collect()
     }
 
-    pub fn update_subchunk(
-        &mut self,
-        device: &wgpu::Device,
-        subchunk_pos: IVec3,
-        subchunk: &mut Subchunk,
-    ) {
-        let mut vertices = Vec::new();
-        for x in 0..Subchunk::SIZE {
-            for y in 0..Subchunk::SIZE {
-                for z in 0..Subchunk::SIZE {
-                    faces_for_block(&mut vertices, subchunk, x, y, z);
-                }
-            }
-        }
+    fn update_subchunk(&mut self, device: &wgpu::Device, neighborhood: &SubchunkNeighborhood) {
+        let (vertices, indices) = generate_mesh_for_subchunk(neighborhood);
 
-        let mut indices = Vec::new();
-        for i in (0..vertices.len() as u16).step_by(4) {
-            indices.push(i);
-            indices.push(i + 1);
-            indices.push(i + 2);
-            indices.push(i);
-            indices.push(i + 2);
-            indices.push(i + 3);
-        }
-
+        let subchunk_pos = neighborhood.subchunk_pos;
         if indices.is_empty() {
             self.subchunk_data
                 .remove(&(subchunk_pos.x, subchunk_pos.y, subchunk_pos.z));
@@ -264,8 +255,6 @@ impl VoxelRenderer {
                 },
             );
         }
-
-        subchunk.dirty = false;
     }
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass, camera_bind_group: &wgpu::BindGroup) {
@@ -287,18 +276,48 @@ impl VoxelRenderer {
     }
 }
 
-fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y: usize, z: usize) {
-    let (x, y, z) = (x as isize, y as isize, z as isize);
-    let block = subchunk.block_or_air(x, y, z);
+fn generate_mesh_for_subchunk(neighborhood: &SubchunkNeighborhood) -> (Vec<Vertex>, Vec<u16>) {
+    let mut vertices = Vec::new();
+    for x in 0..Subchunk::SIZE {
+        for y in 0..Subchunk::SIZE {
+            for z in 0..Subchunk::SIZE {
+                generate_faces_for_block(
+                    &mut vertices,
+                    neighborhood,
+                    ivec3(x as i32, y as i32, z as i32),
+                );
+            }
+        }
+    }
+
+    let mut indices = Vec::new();
+    for i in (0..vertices.len() as u16).step_by(4) {
+        indices.push(i);
+        indices.push(i + 1);
+        indices.push(i + 2);
+        indices.push(i);
+        indices.push(i + 2);
+        indices.push(i + 3);
+    }
+
+    (vertices, indices)
+}
+
+fn generate_faces_for_block(
+    vertices: &mut Vec<Vertex>,
+    neighborhood: &SubchunkNeighborhood,
+    pos: IVec3,
+) {
+    let block = neighborhood.block(pos);
     if block == Block::AIR {
         return;
     }
 
-    let position = u8vec3(x as u8, y as u8, z as u8);
+    let position = u8vec3(pos.x as u8, pos.y as u8, pos.z as u8);
     let block_type = bytemuck::cast(block);
 
     // -X
-    if subchunk.block_or_air(x - 1, y, z) == Block::AIR {
+    if neighborhood.block(pos - IVec3::X) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(0, 0, 0),
@@ -328,7 +347,7 @@ fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y:
     }
 
     // +X
-    if subchunk.block_or_air(x + 1, y, z) == Block::AIR {
+    if neighborhood.block(pos + IVec3::X) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(1, 0, 0),
@@ -358,7 +377,7 @@ fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y:
     }
 
     // -Y
-    if subchunk.block_or_air(x, y - 1, z) == Block::AIR {
+    if neighborhood.block(pos - IVec3::Y) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(0, 0, 0),
@@ -388,7 +407,7 @@ fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y:
     }
 
     // +Y
-    if subchunk.block_or_air(x, y + 1, z) == Block::AIR {
+    if neighborhood.block(pos + IVec3::Y) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(0, 1, 0),
@@ -418,7 +437,7 @@ fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y:
     }
 
     // -Z
-    if subchunk.block_or_air(x, y, z - 1) == Block::AIR {
+    if neighborhood.block(pos - IVec3::Z) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(0, 0, 0),
@@ -448,7 +467,7 @@ fn faces_for_block(vertices: &mut Vec<Vertex>, subchunk: &Subchunk, x: usize, y:
     }
 
     // +Z
-    if subchunk.block_or_air(x, y, z + 1) == Block::AIR {
+    if neighborhood.block(pos + IVec3::Z) == Block::AIR {
         vertices.extend([
             Vertex {
                 position: position + u8vec3(0, 0, 1),

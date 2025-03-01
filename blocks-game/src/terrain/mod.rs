@@ -49,28 +49,16 @@ impl Terrain {
             })
     }
 
-    pub fn subchunks_mut(&mut self) -> impl Iterator<Item = (IVec3, &mut Subchunk)> {
-        self.chunks
-            .iter_mut()
-            .flat_map(|(&(chunk_x, chunk_z), chunk)| {
-                chunk
-                    .subchunks
-                    .iter_mut()
-                    .enumerate()
-                    .map(move |(subchunk_y, subchunk)| {
-                        (ivec3(chunk_x, subchunk_y as i32, chunk_z), subchunk)
-                    })
-            })
-    }
-
-    pub fn dirty_subchunks_mut(&mut self) -> impl Iterator<Item = (IVec3, &mut Subchunk)> {
-        self.subchunks_mut().filter(|(_, subchunk)| subchunk.dirty)
-    }
-
     pub fn subchunk_exists(&self, subchunk_pos: IVec3) -> bool {
         self.chunks
             .get(&(subchunk_pos.x, subchunk_pos.z))
             .is_some_and(|c| (subchunk_pos.y as usize) < c.subchunks.len())
+    }
+
+    pub fn subchunk_mut(&mut self, subchunk_pos: IVec3) -> Option<&mut Subchunk> {
+        self.chunks
+            .get_mut(&(subchunk_pos.x, subchunk_pos.z))
+            .and_then(|c| c.subchunks.get_mut(subchunk_pos.y as usize))
     }
 
     pub fn blocks_intersecting(
