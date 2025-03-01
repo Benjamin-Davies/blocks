@@ -24,20 +24,20 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            position: vec3(0.5, 72.0, 0.5),
+            position: vec3(0.0, 72.0, 0.0),
             ..Default::default()
         }
     }
 
     pub fn bounding_box(&self) -> BoundingBox {
         BoundingBox::new(
-            self.position + vec3(-0.3, 0.0, -0.3),
-            self.position + vec3(0.3, 1.8, 0.3),
+            self.position + vec3(-0.875, 0.0, -0.875),
+            self.position + vec3(0.875, 2.75, 0.875),
         )
     }
 
     pub fn head_position(&self) -> Vec3 {
-        self.position + vec3(0.0, 1.7, 0.0)
+        self.position + vec3(0.0, 2.5, 0.0)
     }
 
     pub fn looking_direction(&self) -> Vec3 {

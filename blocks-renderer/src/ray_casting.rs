@@ -6,7 +6,7 @@ use blocks_game::{
     util::TotalOrd,
 };
 
-const MAX_REACH: f32 = 5.0;
+const MAX_REACH: f32 = 10.0;
 const EPSILON: f32 = 0.0001;
 
 /// Finds the block that the player is clicking on. Returns a tuple of the block position and the
