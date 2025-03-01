@@ -86,9 +86,8 @@ impl Terrain {
         let min_chunk_z = (bounding_box.min.z.floor() as i32).div_euclid(Subchunk::SIZE as i32);
         let max_chunk_z = (bounding_box.max.z.floor() as i32).div_euclid(Subchunk::SIZE as i32);
 
-        self.chunks
-            .range((min_chunk_x, min_chunk_z)..=(max_chunk_x, max_chunk_z))
-            .filter(move |(&(_, z), _)| (min_chunk_z..=max_chunk_z).contains(&z))
-            .map(|(&(x, z), chunk)| (x, z, chunk))
+        (min_chunk_x..=max_chunk_x)
+            .flat_map(move |x| self.chunks.range((x, min_chunk_z)..=(x, max_chunk_z)))
+            .map(move |(&(x, z), chunk)| (x, z, chunk))
     }
 }
