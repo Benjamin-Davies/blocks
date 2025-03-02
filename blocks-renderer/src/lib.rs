@@ -185,16 +185,7 @@ impl<'a, C: Clock> State<'a, C> {
             } if window_id == self.window.id() => {
                 if !self.input(event) {
                     match event {
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            event:
-                                KeyEvent {
-                                    state: ElementState::Pressed,
-                                    physical_key: PhysicalKey::Code(KeyCode::KeyQ),
-                                    ..
-                                },
-                            ..
-                        } => control_flow.exit(),
+                        WindowEvent::CloseRequested => control_flow.exit(),
                         WindowEvent::Resized(physical_size) => {
                             if !self.manual_size {
                                 self.resize(*physical_size);
