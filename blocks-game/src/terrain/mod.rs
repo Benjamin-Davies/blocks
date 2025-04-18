@@ -12,20 +12,51 @@ pub mod subchunk;
 
 mod generation;
 
+pub const RENDER_DISTANCE: i32 = 4;
+
 pub struct Terrain {
     pub chunks: BTreeMap<(i32, i32), Chunk>,
 }
 
 impl Terrain {
     pub fn new() -> Self {
-        let mut chunks = BTreeMap::new();
-        for x in -1..=1 {
-            for z in -1..=1 {
-                chunks.insert((x, z), generate_chunk(x, z));
-            }
+        Self {
+            chunks: BTreeMap::new(),
+        }
+    }
+
+    pub fn generate(&mut self, center: IVec3) {
+        let center_x = center.x.div_euclid(Subchunk::SIZE as i32);
+        let center_z = center.z.div_euclid(Subchunk::SIZE as i32);
+
+        let needs_generation = (-RENDER_DISTANCE..=RENDER_DISTANCE).flat_map(|x_offset| {
+            let chunks = &self.chunks;
+            (-RENDER_DISTANCE..=RENDER_DISTANCE).filter_map(move |z_offset| {
+                let x = center_x + x_offset;
+                let z = center_z + z_offset;
+                if chunks.contains_key(&(x, z)) {
+                    None
+                } else {
+                    Some((x, z))
+                }
+            })
+        });
+        if let Some((x, z)) = needs_generation.min_by_key(|&(x, z)| {
+            let dx = x.abs_diff(center_x);
+            let dz = z.abs_diff(center_z);
+            dx * dx + dz * dz
+        }) {
+            self.chunks.insert((x, z), generate_chunk(x, z));
         }
 
-        Self { chunks }
+        for &(x, y) in self.chunks.keys() {
+            let dx = x.abs_diff(center_x);
+            let dz = y.abs_diff(center_z);
+            if dx * dx + dz * dz > (RENDER_DISTANCE * RENDER_DISTANCE) as u32 {
+                self.chunks.remove(&(x, y));
+                break;
+            }
+        }
     }
 
     pub fn block(&self, block_pos: IVec3) -> Block {

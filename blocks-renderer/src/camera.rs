@@ -17,8 +17,8 @@ pub struct Camera {
 #[repr(C)]
 pub struct CameraBufferContents {
     view_projection: [f32; 4 * 4],
+    position: [f32; 3],
     aspect: f32,
-    _padding: [f32; 3],
 }
 
 impl Camera {
@@ -50,8 +50,8 @@ impl Camera {
     pub fn buffer_contents(&self) -> CameraBufferContents {
         CameraBufferContents {
             view_projection: self.build_view_projection_matrix().to_cols_array(),
+            position: self.eye.to_array(),
             aspect: self.aspect,
-            _padding: [0.0; 3],
         }
     }
 }

@@ -24,7 +24,7 @@ pub struct Player {
 impl Player {
     pub fn new() -> Self {
         Self {
-            position: vec3(0.0, 72.0, 0.0),
+            position: vec3(0.0, 80.0, 0.0),
             ..Default::default()
         }
     }

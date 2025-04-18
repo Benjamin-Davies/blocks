@@ -2,6 +2,7 @@
 
 struct Camera {
     _matrix: mat4x4<f32>,
+    _position: vec3<f32>,
     aspect: f32,
 }
 

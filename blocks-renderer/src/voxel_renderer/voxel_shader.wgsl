@@ -1,7 +1,15 @@
 // Vertex shader
 
+const CORNFLOWER_BLUE: vec4<f32> = vec4<f32>(0.4, 0.6, 0.9, 1.0);
+
+struct Camera {
+    matrix: mat4x4<f32>,
+    position: vec3<f32>,
+    _aspect: f32,
+}
+
 @group(0) @binding(0)
-var<uniform> camera: mat4x4<f32>;
+var<uniform> camera: Camera;
 
 struct VertexInput {
     @location(0) position_and_block_type: vec4<u32>,
@@ -14,6 +22,7 @@ struct VertexOutput {
     @location(0) light_intensity: f32,
     @location(1) block_type: u32,
     @location(2) texture_coords: vec2<f32>,
+    @location(3) relative_position: vec3<f32>,
 };
 
 @vertex
@@ -26,7 +35,9 @@ fn vs_main(
     let subchunk_position = vec3<f32>(model.subchunk_position);
     var out: VertexOutput;
 
-    out.clip_position = camera * vec4(position + 16.0 * subchunk_position, 1.0);
+    let world_position = position + 16.0 * subchunk_position;
+    out.clip_position = camera.matrix * vec4(world_position, 1.0);
+    out.relative_position = world_position - camera.position;
 
     let light_direction = normalize(vec3<f32>(1.0, 3.0, -2.0));
     let value = 0.5 + 0.5 * max(0.0, dot(vec3<f32>(normal), light_direction));
@@ -66,12 +77,16 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+
     let texture_coords = (in.texture_coords + 16.0) % 1.0;
     let texture_position = vec2(f32(in.block_type), 0.0);
     let atlas_coords = (texture_coords + texture_position) / vec2(4.0, 1.0);
 
     let sample = textureSample(t_diffuse, s_diffuse, atlas_coords);
-    return darken(sample, in.light_intensity);
+    let world_color = darken(sample, in.light_intensity);
+
+    let too_far = clamp((length(in.relative_position) - 40.0) / 8.0, 0.0, 1.0);
+    return world_color + too_far * (CORNFLOWER_BLUE - world_color);
 }
 
 fn srgb_to_linear(color: u32) -> vec4<f32> {
