@@ -326,6 +326,13 @@ impl<'a, C: Clock> State<'a, C> {
                     }
                     _ => false,
                 },
+                PhysicalKey::Code(KeyCode::ControlLeft) => {
+                    match event.state {
+                        ElementState::Pressed => self.game.player.sprinting = true,
+                        ElementState::Released => self.game.player.sprinting = false,
+                    }
+                    true
+                }
                 _ => false,
             },
             WindowEvent::Touch(touch) => match touch.phase {

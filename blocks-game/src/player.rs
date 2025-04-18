@@ -9,6 +9,7 @@ use crate::{
 const GRAVITY: f32 = 20.0;
 const JUMP_VELOCITY: f32 = 10.0;
 const WALK_SPEED: f32 = 5.0;
+const SPRINT_SPEED: f32 = 10.0;
 /// The amount of overlap past which a collision will not be resolved.
 const OVERLAP_THRESHOLD: f32 = 0.5;
 
@@ -19,6 +20,7 @@ pub struct Player {
     pub velocity: Vec3,
     pub on_ground: bool,
     pub walk_vector: Vec3,
+    pub sprinting: bool,
 }
 
 impl Player {
@@ -64,7 +66,13 @@ impl Player {
         self.constrain_head_angle();
 
         let walk_rotation = Quat::from_rotation_y(self.head_angle.y.to_radians());
-        let walk_velocity = walk_rotation * self.walk_vector * WALK_SPEED;
+        let walk_velocity = walk_rotation
+            * self.walk_vector
+            * if self.sprinting {
+                SPRINT_SPEED
+            } else {
+                WALK_SPEED
+            };
         self.velocity.x = walk_velocity.x;
         self.velocity.z = walk_velocity.z;
 
